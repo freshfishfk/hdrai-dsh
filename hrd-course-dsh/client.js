@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/hrd-course-dsh',
   factory(require) {
     const styles = String.raw`
-:is([data-hrd-course-landing], [data-hrd-course-answer], .hrd-sidebar-actions) {
+:is([data-hrd-course-landing], [data-hrd-course-answer], .hrd-sidebar-actions, .hrd-credit-dialog, .hrd-account-trigger) {
   --hrd-accent: light-dark(#285ec9, #94b5ff);
   --hrd-surface: light-dark(#fbfcff, #222632);
   --hrd-soft: light-dark(#ebf2ff, #242e43);
@@ -294,6 +294,130 @@ window.__ModuleLoader__.load({
   padding-block: 6px;
 }
 
+
+.hrd-account-trigger {
+  justify-content: flex-start;
+}
+.hrd-account-trigger[data-compact] {
+  justify-content: center;
+  padding-inline: 2px;
+}
+.hrd-account-trigger svg {
+  flex: none;
+}
+.hrd-credit-dialog {
+  inline-size: min(480px, calc(100% - 32px));
+  max-block-size: calc(100dvh - 32px);
+  padding: 0;
+  color: light-dark(#172033, #edf1fa);
+  background: var(--hrd-surface);
+  border: 1px solid var(--hrd-line);
+  border-radius: 16px;
+  box-shadow: 0 16px 60px #0b19333a;
+}
+.hrd-credit-dialog::backdrop {
+  background: #101c3266;
+}
+.hrd-credit-panel {
+  display: grid;
+  gap: 20px;
+  padding: clamp(16px, 5vw, 24px);
+}
+.hrd-credit-header,
+.hrd-credit-history-header,
+.hrd-credit-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hrd-credit-header h2,
+.hrd-credit-history-header h3,
+.hrd-credit-panel p {
+  margin: 0;
+}
+.hrd-credit-header h2 {
+  font-size: 20px;
+  font-weight: 650;
+}
+.hrd-credit-history-header h3 {
+  font-size: 15px;
+  font-weight: 650;
+}
+.hrd-credit-close {
+  min-inline-size: 36px;
+  min-block-size: 36px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--hrd-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+.hrd-credit-close:hover {
+  background: var(--hrd-soft);
+}
+.hrd-credit-balance {
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--hrd-soft);
+}
+.hrd-credit-balance p,
+.hrd-credit-entry time,
+.hrd-credit-status {
+  color: light-dark(#536176, #a6b0c0);
+  font-size: 13px;
+}
+.hrd-credit-amount,
+.hrd-credit-entry strong {
+  font-variant-numeric: tabular-nums;
+}
+.hrd-credit-amount {
+  display: block;
+  font-size: clamp(26px, 8vw, 36px);
+  line-height: 1.25;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.hrd-credit-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.hrd-credit-entry {
+  border-top: 1px solid var(--hrd-line);
+  padding: 10px 0;
+  font-size: 14px;
+}
+.hrd-credit-entry > div {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.hrd-credit-entry time {
+  display: block;
+  margin-top: 2px;
+}
+.hrd-credit-entry strong {
+  white-space: nowrap;
+}
+.hrd-credit-entry[data-incoming] strong {
+  color: var(--hrd-accent);
+}
+.hrd-credit-status {
+  padding-block: 10px;
+}
+.hrd-credit-dialog button:focus-visible,
+.hrd-account-trigger:focus-visible {
+  outline: 2px solid var(--hrd-accent);
+  outline-offset: 2px;
+}
+[data-hrd-course-app] [data-composer-stat],
+[data-hrd-course-app] [data-composer-dock] span[style*="--dsh-context-"],
+[data-hrd-course-app] [data-turn-tail] [data-clock="end"] span:has(> button[aria-haspopup="dialog"]) {
+  display: none;
+}
+
 @media (max-width: 600px) {
   .hrd-course-intro {
     margin-bottom: 17px;
@@ -315,7 +439,7 @@ window.__ModuleLoader__.load({
 }
 `
 
-    const { createElement: h, useState, useSyncExternalStore } = require('react')
+    const { createElement: h, useEffect, useRef, useState, useSyncExternalStore } = require('react')
     const kind = 'hrd-course-answer'
     const defaultCourse = 'module-one-qa'
     const courses = {
@@ -488,6 +612,101 @@ window.__ModuleLoader__.load({
         children)
     }
 
+    const pointFormat = new Intl.NumberFormat('zh-CN')
+    const dateFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
+
+    function MyCredits({ wide, useSessionList }) {
+      const { byId } = useSessionList()
+      const currentSession = Object.values(byId).find(session => (session.retainedBy.mainView ?? 0) > 0 && !session.blank)
+      const dialog = useRef(null)
+      const inFlight = useRef(null)
+      const [wallet, setWallet] = useState(null)
+      const [loading, setLoading] = useState(false)
+      const [failed, setFailed] = useState(false)
+      useEffect(() => () => inFlight.current?.abort(), [])
+
+      async function load(before = null) {
+        inFlight.current?.abort()
+        const controller = new AbortController()
+        inFlight.current = controller
+        setLoading(true)
+        setFailed(false)
+        try {
+          const params = new URLSearchParams()
+          if (currentSession) params.set('session', currentSession.id)
+          if (before !== null) params.set('before', String(before))
+          const response = await fetch(`/api/hrd/credits?${params}`, { signal: controller.signal, cache: 'no-store' })
+          if (!response.ok) throw new Error('Credit history is unavailable')
+          const page = await response.json()
+          if (!controller.signal.aborted) {
+            setWallet(previous => before === null ? page : {
+              ...page, entries: [...(previous?.entries ?? []), ...page.entries],
+            })
+          }
+        } catch {
+          if (!controller.signal.aborted) setFailed(true)
+        } finally {
+          if (inFlight.current === controller) setLoading(false)
+        }
+      }
+
+      function open() {
+        setWallet(null)
+        dialog.current.showModal()
+        void load()
+      }
+
+      function close() {
+        inFlight.current?.abort()
+        dialog.current.close()
+      }
+
+      return h('div', { className: 'hrd-sidebar-actions' },
+        h('button', {
+          type: 'button', className: 'hrd-course-link hrd-account-trigger',
+          'aria-label': '我的', 'aria-haspopup': 'dialog', title: '我的',
+          'data-compact': wide ? undefined : '', onClick: open,
+        },
+        h('svg', {
+          width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none',
+          stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', 'aria-hidden': true,
+        }, h('circle', { cx: 12, cy: 8, r: 3.2 }),
+        h('path', { d: 'M5 20v-1a7 7 0 0 1 14 0v1' })),
+        wide && h('span', null, '我的')),
+        h('dialog', {
+          ref: dialog, className: 'hrd-credit-dialog', 'aria-labelledby': 'hrd-credit-title',
+          onClose: () => inFlight.current?.abort(),
+        },
+        h('div', { className: 'hrd-credit-panel' },
+          h('header', { className: 'hrd-credit-header' },
+            h('h2', { id: 'hrd-credit-title' }, '我的积分'),
+            h('button', { type: 'button', className: 'hrd-credit-close', 'aria-label': '关闭', onClick: close }, '×')),
+          h('div', { className: 'hrd-credit-balance', 'aria-live': 'polite' },
+            h('p', null, '当前可用积分'),
+            h('strong', { className: 'hrd-credit-amount' }, wallet ? pointFormat.format(wallet.balance) : '—'),
+            wallet?.sessionSpent > 0 && h('p', null, `当前会话累计消耗 ${pointFormat.format(wallet.sessionSpent)} 积分`)),
+          h('section', { 'aria-labelledby': 'hrd-credit-history', 'aria-busy': loading },
+            h('div', { className: 'hrd-credit-history-header' },
+              h('h3', { id: 'hrd-credit-history' }, '积分历史'),
+              h('button', { type: 'button', className: 'hrd-refresh', disabled: loading, onClick: () => load() }, '刷新')),
+            wallet?.entries.length > 0 && h('ol', { className: 'hrd-credit-list' },
+              ...wallet.entries.map(entry => h('li', {
+                key: entry.id, className: 'hrd-credit-entry', 'data-incoming': entry.points > 0 ? '' : undefined,
+              }, h('div', null,
+                h('span', null, entry.kind === 'grant'
+                  ? '初始赠送'
+                  : `${courses[entry.course]?.title ?? '课程答疑'} · 第 ${entry.turn} 轮`),
+                h('time', { dateTime: new Date(entry.time).toISOString() },
+                  [byId[entry.sessionId]?.title, dateFormat.format(entry.time)].filter(Boolean).join(' · '))),
+              h('strong', null, `${entry.points > 0 ? '+' : ''}${pointFormat.format(entry.points)}`)))),
+            wallet?.entries.length === 0 && h('p', { className: 'hrd-credit-status' }, '暂无积分记录'),
+            failed && h('p', { className: 'hrd-credit-status', role: 'alert' }, '积分记录暂时无法加载，请刷新重试。'),
+            loading && h('p', { className: 'hrd-credit-status', role: 'status' }, '正在加载…'),
+            wallet?.nextCursor != null && h('button', {
+              type: 'button', className: 'hrd-refresh', disabled: loading, onClick: () => load(wallet.nextCursor),
+            }, '加载更多')))))
+    }
+
     function Source({ source }) {
       return h('details', { className: 'hrd-source' },
         h('summary', null,
@@ -545,7 +764,7 @@ window.__ModuleLoader__.load({
           }
         }, 'HRD course styles')
 
-        for (const name of ['conversation.hero.agentPreset', 'conversation.input.permission', 'conversation.input.model', 'sidebar.settings']) {
+        for (const name of ['conversation.hero.agentPreset', 'conversation.input.permission', 'conversation.input.model']) {
           ctx.slots.inject(name, () => ctx.slots.register({ name, priority: -100 }, hideControl))
         }
         ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({
@@ -560,10 +779,14 @@ window.__ModuleLoader__.load({
         }, promptPlaceholder))
         ctx.inject(['uiWorkspace', 'sessions'], scope => {
           const sessionList = scope.sessions.list
+          const useSessionList = () => useSyncExternalStore(sessionList.subscribe, sessionList.getSnapshot)
+          scope.slots.inject('sidebar.settings', () => scope.slots.register({
+            name: 'sidebar.settings', priority: -100, inject: () => ({ useSessionList }),
+          }, MyCredits))
           scope.slots.inject('sidebar.session.action', () => scope.slots.register({
             name: 'sidebar.session.action', id: 'hrd-course-nav',
             inject: () => ({
-              useSessionList: () => useSyncExternalStore(sessionList.subscribe, sessionList.getSnapshot),
+              useSessionList,
               startCourse: id => scope.uiWorkspace.startSession(undefined, {
                 clearPreviousDraft: false, agentPreset: id,
               }),

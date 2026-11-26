@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { createUserMessage } from '../packages/llm/llm/src/index.ts'
 import { appendPluginRecord } from '../packages/core/session/src/index.ts'
 import { hrdAiRoot } from './hrd-ai-path.mjs'
+import { installCreditBilling } from './billing.mjs'
 
 const [
   { knowledgeConfig, knowledgeQuery, recallKnowledge },
@@ -15,7 +16,7 @@ const [
 ])
 
 export const name = 'hrd-course'
-export const inject = ['agentPresets', 'llm']
+export const inject = ['agentPresets', 'llm', 'tokenMeter', 'webServer']
 
 const recordType = 'plugin:hrd-course/answer'
 const sourceKind = 'hrd-course-retrieval'
@@ -56,14 +57,19 @@ function courseContext(evidence) {
   })
 }
 
-export function apply(ctx) {
+export function apply(ctx, config) {
   const active = new Map()
+  const bill = installCreditBilling(ctx, config)
 
   ctx.on('agent/pre-step', async ({ agent, turn, signal }, next) => {
     const decision = await next()
     if (decision.kind !== 'enter') return decision
     const presetId = ctx.agentPresets.presetForSession(agent.session)
     if (!isModuleAgent(presetId)) return decision
+    const { session } = agent
+    const existing = active.get(session.id)
+    const state = existing?.turn === turn ? existing : { session, turn, course: presetId }
+    active.set(session.id, state)
     const current = decision.messages.findLast(message => message.source.kind === 'user' && humanText(message))
     if (!current) return decision
     const history = agent.session.deriveMessages()
@@ -72,7 +78,8 @@ export function apply(ctx) {
       .map(message => ({ role: 'user', content: humanText(message) }))
     const evidence = await recall(knowledgeQuery(humanText(current), history), presetId, signal)
     signal.throwIfAborted()
-    active.set(agent.session.id, { turn, evidence, answer: undefined })
+    state.evidence = evidence
+    state.answer = undefined
     return { ...decision, messages: [...decision.messages, courseContext(evidence)] }
   })
 
@@ -82,10 +89,14 @@ export function apply(ctx) {
       yield* next()
       return
     }
+    if (!state.evidence) {
+      yield* bill(options, state, next)
+      return
+    }
     state.answer = undefined
     const textFilters = new Map()
     let questions = []
-    for await (const chunk of next()) {
+    for await (const chunk of bill(options, state, next)) {
       if (chunk.type === 'text-delta') {
         let filter = textFilters.get(chunk.index)
         if (!filter) {

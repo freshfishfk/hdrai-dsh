@@ -6,6 +6,9 @@
   disabled: true
 - id: preset-cordis
   disabled: true
+- id: llm-deepseek
+  config:
+    maxTokens: 4096
 - id: session-title-llm
   disabled: true
 - id: agent-preset-registry
@@ -14,6 +17,8 @@
 - insert:
     - id: hrd-course
       name: '@local/hrd-course-dsh'
+      config:
+        initialCredits: 20000
     - id: preset-module-one-qa
       name: '@deepseek-ai/dsh-agent-preset'
       config:

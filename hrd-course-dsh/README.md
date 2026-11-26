@@ -1,9 +1,13 @@
-# HRD-AI 课程答疑 · DSH 本地样板
+# HRD-AI course Q&A · Local DSH sample
 
-用 DSH 要求的 Node.js 和 pnpm，在仓库根目录运行 `pnpm install` 和 `pnpm run build:artifacts`。样板需要本机的 HRD-AI 源码。默认读取与本仓库同级的 `hrd-ai---`，也可以通过 `HRD_AI_ROOT` 指定该源码目录的绝对路径。
+English | [中文](README.zh.md)
 
-在仓库根目录执行一次 `node hrd-course-dsh/run-local.mjs install`，再用 `node hrd-course-dsh/run-local.mjs` 启动。复制终端打印的本机登录链接到浏览器。会话和配置默认保存在 `hrd-course-dsh/.local/`，可以用 `DSH_HOME` 指定其他目录。
+Use the Node.js and pnpm versions required by DSH. From the repository root, run `pnpm install` and `pnpm run build:artifacts`. The sample needs a local copy of the HRD-AI source. By default it looks for a sibling directory named `hrd-ai---`. Set `HRD_AI_ROOT` to use another absolute path.
 
-样板在 127.0.0.1:3081 运行，通过 DSH 本地登录进入。五个课程助理由一个业务插件提供，DSH 预设声明在 `cordis.patch.yml`，各模块的名称、简介和引导题在 `client.js`。
+From the repository root, run `node hrd-course-dsh/run-local.mjs install` once, then start the sample with `node hrd-course-dsh/run-local.mjs`. Open the local sign-in link printed in the terminal. Sessions and configuration are stored under `hrd-course-dsh/.local/` by default. Set `DSH_HOME` to use another directory.
 
-启动器从 HRD-AI 的 `.env.local` 读取 DeepSeek 与得到大脑配置。一至五模块分别使用 `GETNOTE_KNOWLEDGE_ID_MODULE_ONE` 到 `GETNOTE_KNOWLEDGE_ID_MODULE_FIVE`。多个模块可填写同一个库 ID。需要独立库的模块填写自己的 ID 并重启样板。缺少模块的库 ID 时，该模块会提示课程资料暂不可用，不会改查其他模块。
+The sample serves on 127.0.0.1:3081 and uses DSH local sign-in. One plugin provides the five course assistants. Their DSH presets are declared in `cordis.patch.yml`, and their names, descriptions and example questions live in `client.js`.
+
+The launcher reads DeepSeek and GetNote configuration from HRD-AI's `.env.local`. The five modules use `GETNOTE_KNOWLEDGE_ID_MODULE_ONE` through `GETNOTE_KNOWLEDGE_ID_MODULE_FIVE` respectively. Modules can share a knowledge base ID. To give a module its own knowledge base, set its ID and restart the sample. A module with a missing ID reports that its course materials are unavailable and skips retrieval from other modules.
+
+The default local account receives 20,000 credits when the ledger is first created. The ledger is stored as `hrd-credits.sqlite` in the DSH data directory. Set `initialCredits` in `cordis.patch.yml` to change the initial grant for new ledgers. Open **My account (我的)** at the bottom left to see available credits, total credits used in the current session and credit history. A request reserves credits based on the estimated input and the model's output limit. Each completed turn settles once based on actual usage. Failed or canceled turns release the reservation.
